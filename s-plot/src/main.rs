@@ -28,7 +28,7 @@ use crate::hwa::controllers::StepPlanner;
 use crate::hwa::controllers::SoftTimerDriver;
 use crate::hwa::controllers::State;
 
-const STEPPER_PLANNER_MICROSEGMENT_FREQUENCY: u32 = 500; // hwa::STEPPER_PLANNER_MICROSEGMENT_FREQUENCY;
+const STEPPER_PLANNER_MICROSEGMENT_FREQUENCY: u32 = 5_000; // hwa::STEPPER_PLANNER_MICROSEGMENT_FREQUENCY;
 const STEPPER_PLANNER_CLOCK_FREQUENCY: u32 = 100_000; // hwa::STEPPER_PLANNER_CLOCK_FREQUENCY;
 
 const STEPPER_PLANNER_MICROSEGMENT_PERIOD_US: u32 = 1_000_000 / STEPPER_PLANNER_MICROSEGMENT_FREQUENCY;
@@ -42,6 +42,7 @@ struct DataPoints {
     pub last_pos_discrete: Real,
     pub last_spd: Real,
     pub last_spd_discrete: Real,
+    pub last_acc: Real,
     pub time: Vec<f64>,
     pub time_seg: Vec<f64>,
     pub time_discrete: Vec<f64>,
@@ -54,7 +55,7 @@ struct DataPoints {
     pub spd: Vec<f64>,
     pub spd_discrete: Vec<f64>,
     pub seg_discrete: Vec<f64>,
-
+    pub acc: Vec<f64>,
     pub acc_discrete: Vec<f64>,
 
     pub t0: Real,
@@ -70,6 +71,7 @@ impl DataPoints {
             last_pos_discrete: initial_pos_discrete,
             last_spd: initial_spd,
             last_spd_discrete: initial_spd_discrete,
+            last_acc: Real::zero(),
             time: Vec::new(),
             time_seg: Vec::new(),
             time_discrete: Vec::new(),
@@ -82,6 +84,7 @@ impl DataPoints {
             spd: Vec::new(),
             spd_discrete: Vec::new(),
             seg_discrete: Vec::new(),
+            acc: Vec::new(),
             acc_discrete: Vec::new(),
             t0: Real::zero(),
             acc_time: Real::zero(),
@@ -98,20 +101,20 @@ impl DataPoints {
 
     }
 
-    pub fn add_ideal(&mut self, time: Real, pos: Real) {
+    pub fn add_ideal(&mut self, time: Real, pos: Real, spd: Real, acc: Real) {
         self.time.push(time.to_f64());
-        let spd= if let Some(t) = self.last_time {
-            let dt = time - t;
-            (pos - self.last_pos) / dt
-        } else {
-            self.last_spd
-        };
+        // let spd= if let Some(t) = self.last_time {
+        //     let dt = time - t;
+        //     (pos - self.last_pos) / dt
+        // } else {
+        //     self.last_spd
+        // };
 
         self.pos.push(pos.to_f64());
         self.spd.push(spd.to_f64());
-        self.last_time = Some(time);
-        self.last_pos = pos;
-        self.last_spd = spd;
+        self.acc.push(acc.to_f64());
+        // self.last_pos = pos;
+        // self.last_spd = spd;
         //hwa::info!("Pos: {} Spd: {}", pos.rdp(3), spd.rdp(3));
     }
 
@@ -122,11 +125,18 @@ impl DataPoints {
         self.seg_discrete.push(speed.to_f64());
     }
 
-    pub fn acc_pred(&mut self, time0: Real, speed_p0: Real, time1: Real, speed_p1: Real) {
-        self.time_discrete_acc.push(time0.to_f64());
-        self.acc_discrete.push(speed_p0.to_f64());
-        self.time_discrete_acc.push(time1.to_f64());
-        self.acc_discrete.push(speed_p1.to_f64());
+    pub fn acc_pred(&mut self, time: Real, spd: Real) {
+        let acc = if let Some(t) = self.last_time {
+            let dt = time - t;
+            (spd - self.last_spd) / dt
+        } else {
+            self.last_acc
+        };
+        self.last_spd = spd;
+        self.last_acc = acc;
+        self.last_time = Some(time);
+        self.time_discrete_acc.push(time.to_f64());
+        self.acc_discrete.push(acc.to_f64());
     }
 
     pub fn real_start(&mut self, time: Real) {
@@ -199,9 +209,9 @@ async fn main(spawner: embassy_executor::Spawner)
     soft_timer.setup(motion_driver.clone());
     let mut motion_planner = motion::MotionPlanner::new(defer_channel, motion_config, motion_driver);
 
-    const V_MAX:u32 = 500;
-    const A_MAX:u32 = 10000;
-    const J_MAX:u32 = 20000;
+    const V_MAX:u32 = 2000;
+    const A_MAX:u32 = 190000;
+    const J_MAX:u32 = 80000000;
 
     let constraints = Constraints{
         v_max: Real::from_lit(V_MAX.into(), 0),
@@ -241,8 +251,8 @@ async fn main(spawner: embassy_executor::Spawner)
         &GCodeCmd::new(
             1, Some(1),
             GCodeValue::G0(XYZF {
-                x: None, y: Some(Real::from_f32(100.0f32)), z: None,
-                f: Some(Real::from_f32(2000.0f32)),
+                x: None, y: Some(Real::from_f32(10.0f32)), z: None,
+                f: Some(Real::from_f32(700.0f32)),
             })
         ),
         false, &event_bus,
@@ -370,7 +380,7 @@ async fn main(spawner: embassy_executor::Spawner)
                             us_id += 1;
                             if let Some((estimated_position, interval)) = microsegment_iterator.next(micro_segment_real_time_rel) {
                                 // Got a micro-segment
-
+                                let t_now = micro_segment_real_time_rel;
                                 let tprev = (micro_segment_real_time_rel - prev_time);
                                 let tmax = motion_profile.i7_end() - prev_time;
                                 let dt = tmax.min(tprev);
@@ -410,7 +420,11 @@ async fn main(spawner: embassy_executor::Spawner)
                                     interval, ((ds/w) * math::ONE_MILLION).rdp(6)
                                 );
 
-                                data_points.add_ideal(ref_time, total_disp + estimated_position);
+                                let accel_now =  motion_profile.eval_accel(t_now).unwrap().0;
+                                let vel_now = motion_profile.eval_velocity(t_now).unwrap().0;
+
+                                data_points.add_ideal(ref_time, total_disp + estimated_position, vel_now, accel_now);
+                                data_points.acc_pred(ref_time,vel_now);
                                 max_pos_reached = estimated_position;
 
                                 hwa::trace!("\tAdvanced mm: {}", microsegment_interpolator.advanced_mm());
@@ -519,7 +533,7 @@ async fn main(spawner: embassy_executor::Spawner)
             }
         }
 
-        fg.set_multiplot_layout(2, 1)
+        fg.set_multiplot_layout(3, 1)
             .set_title(
                 format!(
                     "{} Double S-Curve velocity profile\n[{} segments, {} mm displacement, {} hz interp, {} hz sampling]",
@@ -543,11 +557,19 @@ async fn main(spawner: embassy_executor::Spawner)
         fg.axes2d()
             .set_y_label("Velocity (mm/s)", &[])
             .points(data_points.time_discrete_seg.clone(), data_points.seg_discrete.clone(), &[PlotOption::Color("black")])
-            //.lines(data_points.time_discrete_acc.clone(), data_points.acc_discrete.clone(), &[PlotOption::Color("red")])
+            // .lines(data_points.time_discrete_acc.clone(), data_points.acc.clone(), &[PlotOption::Color("red")])
             .lines(data_points.time.clone(), data_points.spd.clone(), &[PlotOption::Color("green")])
             .lines(data_points.time_discrete_deriv.clone(), data_points.spd_discrete.clone(), &[PlotOption::Color("gray")])
 
         ;
+        fg.axes2d()
+            .set_y_label("Accel (mm/s^2)", &[])
+            // .points(data_points.time_discrete_seg.clone(), data_points.seg_discrete.clone(), &[PlotOption::Color("black")])
+            .lines(data_points.time.clone(), data_points.acc.clone(), &[PlotOption::Color("red")])
+            // .lines(data_points.time.clone(), data_points.spd.clone(), &[PlotOption::Color("green")])
+            .lines(data_points.time_discrete_acc.clone(), data_points.acc_discrete.clone(), &[PlotOption::Color("gray")])
+        ;
+
         fg.show_and_keep_running().unwrap();
         fg.save_to_pdf("plot.pdf", 10.0f32, 10.0f32);
 

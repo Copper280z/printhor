@@ -26,6 +26,8 @@ pub trait MotionProfile {
     /// - The evaluated position as `Real`.
     /// - A status as `u8` (implementation-specific).
     fn eval_position(&self, t: Real) -> Option<(Real, u8)>;
+    fn eval_velocity(&self, t: Real) -> Option<(Real, u8)>;
+    fn eval_accel(&self, t: Real) -> Option<(Real, u8)>;
 }
 
 /// Struct representing the motion profile configuration.
@@ -1173,6 +1175,25 @@ impl SCurveMotionProfile {
         (self.j_max * SIXTH * dt * dt * dt) + (self.v_0 * dt)
     }
 
+    pub fn s_i1_v(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i1_start();
+        let v_calc = (self.j_max * HALF * dt * dt) + (self.v_0);
+        // let v_out = v_calc;
+        // if (v_calc.abs() > self.v_lim) {
+        //     v_out = v_calc.sign()*self.v_lim;
+        // }
+        return v_calc;
+    }
+
+    pub fn s_i1_a(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i1_start();
+        let a_calc = (self.j_max * dt);
+        // let mut a_out = a_calc;
+        // if (a_calc.abs() > self.a_lim_a) {
+        //     a_out = a_calc.sign()*self.a_lim_a;
+        // }
+        return a_calc;
+    }
     /// Acceleration phase, constant acceleration
     ///
     /// v_{i2}(t)_{|t>\delta} = j_{max} T_{j1} t + v_{i1}(\delta)\\
@@ -1186,6 +1207,17 @@ impl SCurveMotionProfile {
         (self.j_max * HALF * self.t_j1 * dt) * (dt + self.t_j1) + self.v_0 * dt + self.cache.s1_pt
     }
 
+    #[inline]
+    pub fn s_i2_a(&self, t: &Real) -> Real {
+        self.j_max * self.t_j1
+    }
+
+    pub fn s_i2_v(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i2_start();
+        let accel = self.s_i2_a(t);
+        let s_i2_v0 = self.s_i1_v(&self.t_j1);
+        s_i2_v0 + accel*dt
+    }
     /// Acceleration phase, jerk limited deceleration
     ///
     /// v_{i3}(t)(t)_{|t>\delta} = v_{i2}(t) + v_{0} - j_{max} T_{j1} (t-\delta)\\
@@ -1196,6 +1228,15 @@ impl SCurveMotionProfile {
         self.s_i2(t) - ((self.j_max * SIXTH * dt) * (dt * dt))
     }
 
+    pub fn s_i3_a(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i3_start();
+        self.s_i2_a(t) - (self.j_max * dt)
+    }
+
+    pub fn s_i3_v(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i3_start();
+        self.s_i2_v(t) - (self.j_max * HALF * (dt * dt))
+    }
     /// Constant velocity
     ///
     /// v_{i4}(t)(t)_{|t>\delta} = v_{lim} \\
@@ -1204,6 +1245,16 @@ impl SCurveMotionProfile {
     pub fn s_i4(&self, t: &Real) -> Real {
         let dt = (*t) - self.i4_start();
         self.cache.s3_pt + (self.v_lim * dt)
+    }
+
+    #[inline]
+    pub fn s_i4_v(&self, t: &Real) -> Real {
+        self.v_lim
+    }
+
+    #[inline]
+    pub fn s_i4_a(&self, t: &Real) -> Real {
+        ZERO
     }
 
     /// Deceleration phase, jerk limited deceleration
@@ -1219,6 +1270,18 @@ impl SCurveMotionProfile {
         let dt = (*t) - self.i5_start();
         let r = (self.j_max * SIXTH * dt * dt * dt);
         self.s_i4(t) - r
+    }
+
+    pub fn s_i5_v(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i5_start();
+        let r = (self.j_max * HALF * dt * dt);
+        self.s_i4_v(t) - r
+    }
+
+    pub fn s_i5_a(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i5_start();
+        let r = (self.j_max * dt);
+        self.s_i4_a(t) - r
     }
 
     /// Deceleration phase, constant deceleration
@@ -1237,6 +1300,17 @@ impl SCurveMotionProfile {
         (dt * (mhj2 * dt)) + (((mhj2 * self.t_j2) + self.v_lim) * dt) + self.cache.s5_pt
     }
 
+    pub fn s_i6_v(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i6_start();
+        let s_i6_v0 = self.s_i5_v(&self.i6_start());
+        let accel = self.j_max * self.t_j2;
+        s_i6_v0 - accel * dt
+    }
+
+    pub fn s_i6_a(&self, t: &Real) -> Real {
+        -self.j_max * self.t_j2
+    }
+
     /// Deceleration phase, jerk limited acceleration
     ///
     /// v_{i3}(t)(t)_{|t>\delta} = v_{i2}(t) + v_{0} - j_{max} T_{j1} (t-\delta)\\
@@ -1246,11 +1320,24 @@ impl SCurveMotionProfile {
         let dt = (*t) - self.i7_start();
         self.s_i6(t) + ((self.j_max * SIXTH * dt) * dt * dt)
     }
-
+    pub fn s_i7_v(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i7_start();
+        self.s_i6_v(t) + (self.j_max * HALF * (dt * dt))
+    }
+    pub fn s_i7_a(&self, t: &Real) -> Real {
+        let dt = (*t) - self.i7_start();
+        self.s_i6_a(t) + (self.j_max * dt)
+    }
     /// Constant (exit) speed at the end
     pub fn s_i8(&self, t: &Real) -> Real {
         let dt = (*t) - self.i7_end();
         self.cache.s7_pt + (self.v_1 * dt)
+    }
+    pub fn s_i8_v(&self, t: &Real) -> Real {
+        self.v_1
+    }
+    pub fn s_i8_a(&self, t: &Real) -> Real {
+        ZERO
     }
 }
 
@@ -1282,6 +1369,48 @@ impl MotionProfile for SCurveMotionProfile {
             Some((self.s_i7(&t), 7))
         } else {
             Some((self.q1, 8))
+        }
+    }
+    fn eval_velocity(&self, t: Real) -> Option<(Real, u8)> {
+        if t < math::ZERO {
+            None
+        } else if t >= self.i1_start() && t < self.i1_end() {
+            Some((self.s_i1_v(&t), 1))
+        } else if t >= self.i2_start() && t < self.i2_end() {
+            Some((self.s_i2_v(&t), 2))
+        } else if t >= self.i3_start() && t < self.i3_end() {
+            Some((self.s_i3_v(&t), 3))
+        } else if t >= self.i4_start() && t < self.i4_end() {
+            Some((self.s_i4_v(&t), 4))
+        } else if t >= self.i5_start() && t < self.i5_end() {
+            Some((self.s_i5_v(&t), 5))
+        } else if t >= self.i6_start() && t < self.i6_end() {
+            Some((self.s_i6_v(&t), 6))
+        } else if t >= self.i7_start() && t <= self.i7_end() {
+            Some((self.s_i7_v(&t), 7))
+        } else {
+            Some((self.v_1, 8))
+        }
+    }
+    fn eval_accel(&self, t: Real) -> Option<(Real, u8)> {
+        if t < math::ZERO {
+            None
+        } else if t >= self.i1_start() && t < self.i1_end() {
+            Some((self.s_i1_a(&t), 1))
+        } else if t >= self.i2_start() && t < self.i2_end() {
+            Some((self.s_i2_a(&t), 2))
+        } else if t >= self.i3_start() && t < self.i3_end() {
+            Some((self.s_i3_a(&t), 3))
+        } else if t >= self.i4_start() && t < self.i4_end() {
+            Some((self.s_i4_a(&t), 4))
+        } else if t >= self.i5_start() && t < self.i5_end() {
+            Some((self.s_i5_a(&t), 5))
+        } else if t >= self.i6_start() && t < self.i6_end() {
+            Some((self.s_i6_a(&t), 6))
+        } else if t >= self.i7_start() && t <= self.i7_end() {
+            Some((self.s_i7_a(&t), 7))
+        } else {
+            Some((ZERO, 8))
         }
     }
 }
