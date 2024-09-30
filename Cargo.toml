@@ -21,7 +21,12 @@ nightly = ["embassy-executor/nightly", "printhor-hwa-common/nightly", "printhor-
 verbose-timings = ["printhor-hwi_native?/verbose-timings", "printhor-hwi_skr_mini_e3?/verbose-timings", "printhor-hwi_mks_robin_nano?/verbose-timings", "printhor-hwi_nucleo_64_arduino_cnc_hat?/verbose-timings", "printhor-hwi_rp_2040?/verbose-timings"]
 # A specific hack to verify motion distances match the expectations
 assert-motion = []
-default = ["embassy-executor/executor-thread", "embassy-executor/arch-std"]
+default = [
+    "embassy-executor/executor-thread", 
+    "embassy-executor/arch-std", 
+    # "mks_robin_nano",
+    "native",
+    "with-spi"]
 
 # Hardware device features
 without-bootloader = []
@@ -32,7 +37,7 @@ with-serial-usb = ["printhor-hwa-common/with-serial-usb"]
 with-serial-port-1 = ["printhor-hwa-common/with-serial-port-1"]
 with-serial-port-2 = ["printhor-hwa-common/with-serial-port-2"]
 with-printjob = []
-with-spi = ["embedded-hal"]
+with-spi = ["embedded-hal","printhor-hwi_native?/with-spi"]
 with-hot-end = ["embedded-hal", "printhor-hwa-common/with-hot-end"]
 with-hot-bed = ["embedded-hal", "printhor-hwa-common/with-hot-bed"]
 with-motion = ["printhor-hwa-common/with-motion"]
