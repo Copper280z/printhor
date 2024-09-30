@@ -108,7 +108,10 @@ cfg_if::cfg_if! {
             pub fn to_f64(&self) -> f64 {
                 self.0 as f64
             }
-
+            #[inline]
+            pub fn to_f32(&self) -> f32 {
+                self.0 as f32
+            }
             #[inline]
             pub fn to_i32(&self) -> Option<i32> {
                 self.0.to_i32()

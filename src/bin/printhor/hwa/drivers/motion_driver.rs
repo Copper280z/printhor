@@ -3,6 +3,7 @@ use super::timing_monitor::*;
 #[allow(unused)]
 #[cfg(feature = "with-probe")]
 use crate::hwa::controllers::ProbeTrait;
+use crate::hwa::controllers::SPIServoTransport;
 use crate::math;
 use crate::math::Real;
 use crate::tgeo::{ArithmeticOps, CoordSel, TVector};
@@ -23,13 +24,18 @@ pub struct MotionDriverParams {
     #[cfg(feature = "with-trinamic")]
     pub motion_config: hwa::controllers::MotionConfigRef,
     #[cfg(feature = "with-probe")]
-    pub probe_controller: InterruptControllerRef<hwa::controllers::ServoController>,
+    pub probe_controller: InterruptControllerRef<hwa::controllers::RCServoController>,
     #[cfg(feature = "with-fan-extra-1")]
     pub fan_extra_1_controller: InterruptControllerRef<hwa::controllers::FanExtra1PwmController>,
     #[cfg(feature = "with-fan-layer")]
     pub fan_layer_controller: InterruptControllerRef<hwa::controllers::FanLayerPwmController>,
     #[cfg(feature = "with-laser")]
     pub laser_controller: InterruptControllerRef<hwa::controllers::LaserPwmController>,
+}
+#[cfg(feature = "with-motion")]
+pub struct ServoMotionDriver {
+    #[cfg(feature = "with-spi")]
+    pub transport: SPIServoTransport,
 }
 
 pub struct MotionDriver {
@@ -38,7 +44,7 @@ pub struct MotionDriver {
     #[cfg(feature = "with-trinamic")]
     pub trinamic_controller: hwa::controllers::TrinamicController,
     #[cfg(feature = "with-probe")]
-    pub probe_controller: InterruptControllerRef<hwa::controllers::ServoController>,
+    pub probe_controller: InterruptControllerRef<hwa::controllers::RCServoController>,
     #[cfg(feature = "with-fan-layer")]
     #[allow(unused)]
     pub fan_layer_controller: InterruptControllerRef<hwa::controllers::FanLayerPwmController>,

@@ -21,6 +21,7 @@ use printhor_hwa_common::{ControllerMutex, ControllerRef, TrackedStaticCell, Mac
 #[allow(unused)]
 use crate::board::mocked_peripherals::MockedIOPin;
 use crate::task_stepper_ticker;
+use crate::servo_timer_ticker;
 
 pub const MACHINE_TYPE: &str = "Simulator/debugger";
 pub const MACHINE_BOARD: &str = "PC";
@@ -170,6 +171,8 @@ pub fn init() -> HWIPeripherals {
 pub async fn setup(_spawner: Spawner, _p: HWIPeripherals) -> MachineContext<Controllers, SysDevices, IODevices, MotionDevices, PwmDevices> {
 
     let _ = _spawner.spawn(task_stepper_ticker());
+    let _ = _spawner.spawn(servo_timer_ticker());
+    
 
     let _pin_state = mocked_peripherals::init_pin_state();
 
@@ -239,8 +242,8 @@ pub async fn setup(_spawner: Spawner, _p: HWIPeripherals) -> MachineContext<Cont
     #[cfg(feature = "with-spi")]
     let spi1_device = {
         #[link_section = "__DATA,.bss"]
-        static SPI1_INST: TrackedStaticCell<ControllerMutex<device::Spi>> = TrackedStaticCell::new();
-        ControllerRef::new(SPI1_INST.init(
+        static SPI1_INST: TrackedStaticCell<printhor_hwa_common::InterruptControllerMutex<device::Spi>> = TrackedStaticCell::new();
+        ControllerRef::new(SPI1_INST.init::<{MAX_STATIC_MEMORY}>(
             "SPI1",
             ControllerMutex::new(
                 device::Spi::new()

@@ -3,10 +3,16 @@ use core::future::{poll_fn, Future};
 use core::task::{Context, Poll};
 use embassy_sync::waitqueue::WakerRegistration;
 use printhor_hwa_common::StepperChannel;
+use crate::hwa::controllers::SPIServoTransport;
+use crate::control::motion::SCurveMotionProfile;
 use crate::hwa;
 use crate::hwa::controllers::{MultiTimer, StepPlanner};
 use crate::hwa::drivers::motion_driver::MotionDriverRef;
+use crate::math::{Real, ONE_MILLION};
 use critical_section::Mutex as CsMutex;
+use crate::control::motion::profile::MotionProfile;
+
+use super::TransportTrait;
 
 /// The size of the timer queue.
 const TIMER_QUEUE_SIZE: usize = 4;
@@ -364,21 +370,24 @@ impl SoftTimer {
     /// let timer = SoftTimer::new();
     /// ```
     pub const fn new() -> Self {
-        Self(CsMutex::new(RefCell::new(SoftTimerDriver {
-            current: StepPlanner::new(),
-            state: State::Idle,
-            queue: [None; TIMER_QUEUE_SIZE],
-            head: 0,
-            tick_count: 0,
-            waker: WakerRegistration::new(),
-            num_queued: 0,
-            tail: 0,
-            drv: None,
-            current_stepper_enable_flags: StepperChannel::empty(),
-            current_stepper_dir_fwd_flags: StepperChannel::empty(),
-            #[cfg(any(feature = "assert-motion", test))]
-            pulses: [0, 0, 0, 0],
-        })))
+        Self(CsMutex::new(RefCell::new(
+            SoftTimerDriver {
+                current: StepPlanner::new(),
+                state: State::Idle,
+                queue: [None; TIMER_QUEUE_SIZE],
+                head: 0,
+                tick_count: 0,
+                waker: WakerRegistration::new(),
+                num_queued: 0,
+                tail: 0,
+                drv: None,
+                current_stepper_enable_flags: StepperChannel::empty(),
+                current_stepper_dir_fwd_flags: StepperChannel::empty(),
+                #[cfg(any(feature = "assert-motion", test))]
+                pulses: [0, 0, 0, 0],
+            }
+        )
+    ))
     }
 
     
@@ -711,5 +720,253 @@ pub extern "Rust" fn do_tick() {
                 }
             }
         }
+    });
+}
+
+pub struct SoftTimerServoDriver {
+    /// The current step planner in use.
+    profile: Option<SCurveMotionProfile>,
+    next_profile: Option<SCurveMotionProfile>,
+
+    // the instant the motion profile is to start, so we can decide when
+    // it should be done without checking positions
+    ref_time: embassy_time::Instant,
+    next_ref_time: embassy_time::Instant,
+
+    /// The current state of the driver.
+    pub state: State,
+
+    /// Reference to the motion driver.
+    transport: Option<SPIServoTransport>,
+
+    /// The waker registration for waking up tasks.
+    // waker: WakerRegistration,
+
+    /// Flags indicating the current enabled stepper channels.
+    current_axis_enable_flags: StepperChannel,
+
+    /// Flags indicating the current forward direction stepper channels.
+    current_axis_dir_fwd_flags: StepperChannel,
+
+}
+
+impl SoftTimerServoDriver {
+    
+    /// Handles the interrupt routine for the timer.
+    ///
+    /// This method is called when a timer interrupt occurs. It processes the current state 
+    /// of the timer and steps through the queue of `StepPlanner` instances. The method 
+    /// performs the following steps:
+    ///
+    /// 1. If the current state is idle, it attempts to consume the next item in the queue.
+    /// 2. If an item was consumed, it updates the tick count by the stepper planner clock period.
+    /// 3. Processes the next step based on the current timer.
+    /// 4. If the timer interval has been completed, it attempts to consume the next item
+    ///    in the queue and set the state to either Duty or Idle.
+    /// 5. Notifies the system about any pending items in the queue.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic if:
+    ///
+    /// * It encounters an unexpected state, such as being unable to process the next step.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assuming you have a `SoftTimerDriver` instance named `driver`
+    /// driver.on_interrupt();
+    /// ```
+    pub fn on_interrupt(&mut self) {
+        // check if profile is active
+        // if so, send_motion
+        let _t0 = embassy_time::Instant::now();
+        match &self.profile {
+            None =>{},
+            Some(_p) => {
+                let elapsed = Real::from_f32(self.ref_time.elapsed().as_micros() as f32)/ONE_MILLION;
+                if elapsed > _p.end_time() {
+                    match &self.next_profile {
+                        None => {
+                            self.state = State::Idle;
+                            self.profile = None;
+        
+                        },
+                        Some(_np) => {
+                            self.profile.replace(*_np); // maybe bad idea to copy?
+                            self.next_profile = None;
+                            self.ref_time = self.next_ref_time;
+                        }
+                    }
+        
+                } else {
+                    // this should never panic, as elapsed should always be positive
+                    let pos = _p.mp().eval_position(elapsed).unwrap().0;
+                    let vel = _p.mp().eval_velocity(elapsed).unwrap().0;
+                    let acc = _p.mp().eval_accel(elapsed).unwrap().0;
+
+                    match &self.transport {
+                        None => {},
+                        Some(_t) => {
+                            _t.send_motion(pos, vel, acc);
+                        }
+                    }
+                    
+                }
+            }
+        }
+
+
+    }
+
+}
+
+
+pub struct ServoSoftTimer(pub CsMutex<RefCell<SoftTimerServoDriver>>);
+
+impl ServoSoftTimer {
+    /// Creates a new instance of `ServoSoftTimer`.
+    ///
+    /// This constructor initializes a `ServoSoftTimer` with a `SoftTimerDriver` 
+    /// containing default values for its fields. The `SoftTimerDriver` is 
+    /// encapsulated within a `CsMutex` and `RefCell` to ensure safe concurrent 
+    /// access. 
+    ///
+    /// The `ServoSoftTimer` struct coordinates stepper motor operations and ensures 
+    /// synchronization using critical sections. The fields within the `SoftTimerDriver` 
+    /// include attributes for step planning, state, queue management, pulse counting, 
+    /// and driver configuration.
+    ///
+    /// # Return
+    ///
+    /// Returns an instance of `ServoSoftTimer`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// // Creating a new ServoSoftTimer instance
+    /// let timer = ServoSoftTimer::new();
+    /// ```
+    pub const fn new() -> Self {
+        Self(CsMutex::new(RefCell::new(
+            SoftTimerServoDriver {
+                profile: None,
+                next_profile: None,
+                ref_time: embassy_time::Instant::from_micros(0),
+                next_ref_time: embassy_time::Instant::from_micros(0),
+                state: State::Idle,
+                // waker: WakerRegistration::new(),
+                transport: None,
+                current_axis_enable_flags: StepperChannel::empty(),
+                current_axis_dir_fwd_flags: StepperChannel::empty(),
+            }
+        )
+    ))
+    }
+
+    
+    /// Sets up the `SoftTimer` instance with a transport reference.
+    ///
+    /// This method configures the `SoftTimer` by associating it with a provided
+    /// transport reference. It ensures that all subsequent operations can
+    /// utilize the provided driver for managing servo controller communications.
+    ///
+    /// The setup process is enclosed within a critical section to ensure safe
+    /// concurrent access and modification of the internal state.
+    ///
+    /// # Parameters
+    ///
+    /// - `_trans`: A transport reference that the `SoftTimer` will use for its
+    ///   operations.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let timer = SoftTimer::new();
+    /// let motion_driver_ref = ...; // Provide a motion driver reference
+    /// timer.setup(motion_driver_ref);
+    /// ```
+    pub fn setup(&self, _trans: SPIServoTransport) {
+        critical_section::with(|cs| {
+            let mut r = self.0.borrow_ref_mut(cs);
+            r.transport.replace(_trans);
+        })
+    }
+
+    
+    /// Pushes a multi-timer segment onto the internal queue.
+    ///
+    /// This method enqueues a multi-timer segment, along with flags for stepper 
+    /// motor channel enablement and direction, into the `SoftTimer` queue. The
+    /// `push` operation ensures that the stepper motor operations are managed 
+    /// in sequence with other queued segments.
+    ///
+    /// The method returns a future that resolves once the operation is completed.
+    /// This allows asynchronous handling of the queueing process.
+    ///
+    /// # Parameters
+    ///
+    /// - `multi_timer`: The `MultiTimer` instance representing the segment to be queued.
+    /// - `stepper_enable_flags`: Flags indicating which stepper motor channels are enabled.
+    /// - `stepper_dir_fwd_flags`: Flags indicating the forward direction for the
+    ///   stepper motor channels.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let timer = SoftTimer::new();
+    /// // Define a multi-timer segment
+    /// let multi_timer = ...;
+    /// // Enable X channel and set forward direction for X channel
+    /// let stepper_enable_flags = StepperChannel::X;
+    /// let stepper_dir_fwd_flags = StepperChannel::X;
+    /// let push_future = timer.push(multi_timer, stepper_enable_flags, stepper_dir_fwd_flags);
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// A future that resolves to `()` once the segment has been successfully queued.
+    pub fn push(
+        &self,
+        ref_instant: embassy_time::Instant,
+        new_profile: SCurveMotionProfile,
+        axis_enable_flags: StepperChannel,
+        axis_dir_fwd_flags: StepperChannel,
+    ) {
+        critical_section::with(|cs| {
+            let mut r = self.0.borrow_ref_mut(cs);
+            if r.state == State::Idle {
+                r.profile.replace(new_profile);
+                r.ref_time=ref_instant;
+            } else if r.next_profile.is_none() {
+                r.next_profile.replace(new_profile);
+                r.next_ref_time = ref_instant;
+            } else {
+                unreachable!("tried to queue up too many motion profiles, you better fix it!")
+            }
+            r.current_axis_enable_flags = axis_enable_flags;
+            r.current_axis_dir_fwd_flags = axis_dir_fwd_flags;
+        })
+    }
+
+    
+    pub fn reset(&self) {
+        critical_section::with(|cs| {
+            let mut r = self.0.borrow_ref_mut(cs);
+            r.current_axis_enable_flags = StepperChannel::UNSET;
+            r.current_axis_dir_fwd_flags = StepperChannel::UNSET;
+        });
+    }
+
+}
+
+pub static SERVO_DRIVER: ServoSoftTimer = ServoSoftTimer::new();
+
+#[no_mangle]
+pub extern "Rust" fn servo_tick() {
+    critical_section::with(|cs| {
+        let mut servo_driver = SERVO_DRIVER.0.borrow_ref_mut(cs);
+
+        servo_driver.on_interrupt();
     });
 }

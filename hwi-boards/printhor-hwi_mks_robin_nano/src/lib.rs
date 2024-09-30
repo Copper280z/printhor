@@ -98,6 +98,14 @@ cfg_if::cfg_if! {
                 do_tick();
             }
         }
+
+        extern "Rust" {fn servo_tick();}
+        #[interrupt]
+        fn TIM6() {
+            unsafe {
+                servo_tick();
+            }
+        }
     }
 }
 

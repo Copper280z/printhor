@@ -56,7 +56,7 @@ pub trait ProbeTrait {
 ///
 /// * `servo` - A reference to an interrupt-controlled PWM servo device (PwmServo).
 /// * `channel` - The specific PWM channel associated with the servo motor.
-pub struct ServoController {
+pub struct RCServoController {
     /// A reference to an interrupt-controlled PWM servo device.
     servo: InterruptControllerRef<hwa::device::PwmServo>,
 
@@ -64,7 +64,7 @@ pub struct ServoController {
     channel: hwa::device::PwmChannel,
 }
 
-impl ServoController {
+impl RCServoController {
     pub fn new(
         servo: InterruptControllerRef<hwa::device::PwmServo>,
         channel: hwa::device::PwmChannel,
@@ -101,7 +101,7 @@ impl ServoController {
     }
 }
 
-impl ProbeTrait for ServoController {
+impl ProbeTrait for RCServoController {
     /// Lowers the probe pin, causing it to make contact. The operation waits for a specified duration.
     ///
     /// This method is part of the `ProbeTrait` implementation for the `ServoController`

@@ -22,6 +22,9 @@ mod motion_timing;
 /// The module for motion time driver functionalities.
 mod motion_time_driver;
 
+// The module that provides the communication transport for external servo drives
+mod servo_transport;
+
 pub use motion_config::*;
 pub use motion_planner::*;
 pub use motion_interpolation::*;
@@ -29,6 +32,7 @@ pub use motion_segment::*;
 pub use motion_status::*;
 pub use motion_timing::*;
 pub use motion_time_driver::*;
+pub use servo_transport::*;
 use crate::hwa;
 
 /// Represents a scheduled move in the motion system.

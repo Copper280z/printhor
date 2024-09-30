@@ -2,6 +2,8 @@ use embassy_stm32::wdg;
 #[allow(unused)]
 use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::timer::simple_pwm::SimplePwm;
+use embassy_stm32::timer;
+use embassy_stm32::interrupt;
 
 cfg_if::cfg_if! {
     if #[cfg(feature="with-serial-usb")] {
@@ -42,6 +44,8 @@ cfg_if::cfg_if! {
 
 #[cfg(feature = "with-spi")]
 pub(crate) type Spi1 = embassy_stm32::spi::Spi<'static,embassy_stm32::mode::Async>;
+#[cfg(feature = "with-spi")]
+pub(crate) type Spi2 = embassy_stm32::spi::Spi<'static,embassy_stm32::mode::Async>;
 
 #[cfg(feature = "with-spi")]
 pub type SpiCardDevice = Spi1;
@@ -84,6 +88,9 @@ pub type PwmFanLayer = SimplePwm<'static, embassy_stm32::peripherals::TIM3>;
 pub type PwmHotend = SimplePwm<'static, embassy_stm32::peripherals::TIM9>;
 pub type PwmHotbed = SimplePwm<'static, embassy_stm32::peripherals::TIM5>;
 pub type PwmLaser = SimplePwm<'static, embassy_stm32::peripherals::TIM13>;
+
+pub type ServoTimer = timer::low_level::Timer<embassy_stm32::peripherals::TIM6>;
+// pub type ServoTimerISR = timer::UpdateInterruptHandler<embassy_stm32::peripherals::TIM6>;
 
 pub type PwmChannel = embassy_stm32::timer::Channel;
 

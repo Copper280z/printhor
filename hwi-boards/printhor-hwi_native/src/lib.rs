@@ -116,6 +116,30 @@ pub async fn task_stepper_ticker()
     }
 }
 
+
+extern "Rust" {fn servo_tick();}
+
+#[embassy_executor::task]
+pub async fn servo_timer_ticker() {
+    let mut t = embassy_time::Ticker::every(Duration::from_micros((1_000_000 / 5000) as u64));
+
+    loop {
+        if embassy_time::with_timeout(Duration::from_secs(5), TICKER_SIGNAL.wait()).await.is_err() {
+            if TERMINATION.signaled() {
+                info!("[servo_timer_ticker] Ending gracefully");
+                return ();
+            }
+            continue;
+        }
+        unsafe {
+            servo_tick();
+        }
+        t.next().await;
+    }
+}
+
+
+
 pub fn sys_reset() {
     std::process::exit(0);
 }

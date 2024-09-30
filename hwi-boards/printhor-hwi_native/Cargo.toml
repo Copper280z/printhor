@@ -31,7 +31,7 @@ with-fan-extra-1 = ["embedded-hal"]
 with-laser = ["embedded-hal"]
 with-trinamic = ["tmc2209"]
 with-ps-on = []
-with-spi = []
+with-spi = ["embedded-hal"]
 
 with-display = []
 

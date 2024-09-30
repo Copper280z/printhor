@@ -297,6 +297,12 @@ pub async fn setup(_spawner: Spawner, p: embassy_stm32::Peripherals) -> printhor
         device::TrinamicUart::new(TRINAMIC_UART_BAUD_RATE, p.PD5, p.PD1, p.PD4, p.PD9)
     };
 
+    let servo_timer = device::ServoTimer::new(embassy_stm32::peripherals::TIM6);
+    servo_timer.set_frequency(5000);
+    // autoreload preload?
+    servo_timer.enable_update_interrupt(true);
+    servo_timer.start();
+
     #[cfg(feature = "with-spi")]
     let spi1_device = {
         let mut cfg = spi::Config::default();

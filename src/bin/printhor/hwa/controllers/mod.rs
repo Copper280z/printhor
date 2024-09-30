@@ -40,14 +40,14 @@ pub use trinamic_controller::TrinamicController;
 pub use motion::*;
 
 #[cfg(feature = "with-probe")]
-pub use servo_controller::ServoController;
+pub use servo_controller::RCServoController;
 
 #[cfg(feature = "with-ps-on")]
 pub type PsOnRef =
     printhor_hwa_common::ControllerRef<ControllerMutexType, crate::hwa::device::PsOnPin>;
 
 #[cfg(feature = "with-probe")]
-pub type ServoControllerRef = printhor_hwa_common::InterruptControllerRef<ServoController>;
+pub type ServoControllerRef = printhor_hwa_common::InterruptControllerRef<RCServoController>;
 
 #[cfg(feature = "with-probe")]
 pub use servo_controller::ProbeTrait;

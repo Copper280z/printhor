@@ -41,6 +41,13 @@ cfg_if::cfg_if! {
     }
 }
 
+// use embassy_embedded_hal::timer;
+// use embassy_embedded_hal::interrupt;
+
+// pub type ServoTimer = timer::low_level::Timer<>;
+// pub type ServoTimerISR = timer::UpdateInterruptHandler<embassy_stm32::peripherals::TIM6>;
+
+
 #[cfg(feature = "with-trinamic")]
 pub type TrinamicUart = crate::board::comm::SingleWireSoftwareUart;
 
@@ -68,7 +75,7 @@ pub type PsOnRef = printhor_hwa_common::StandardControllerRef<PsOnPin>;
 pub type Spi = crate::board::mocked_peripherals::MockedSpi;
 
 #[cfg(feature = "with-spi")]
-pub type SpiDeviceRef = printhor_hwa_common::ControllerRef<Spi>;
+pub type SpiDeviceRef = printhor_hwa_common::InterruptControllerRef<Spi>;
 
 #[cfg(any(feature = "with-probe", feature = "with-hot-bed", feature = "with-hot-end", feature = "with-fan-layer", feature = "with-laser", feature = "with-fan-extra-1"))]
 pub type PwmAny = crate::board::mocked_peripherals::MockedPwm;

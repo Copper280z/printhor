@@ -23,7 +23,7 @@ use hwa::{EventBusRef, StepperChannel};
 use hwa::{EventFlags, EventStatus};
 use hwa::controllers::motion::SegmentIterator;
 use hwa::controllers::LinearMicrosegmentStepInterpolator;
-use hwa::controllers::motion::STEP_DRIVER;
+use hwa::controllers::motion::{STEP_DRIVER, SERVO_DRIVER};
 
 const DO_NOTHING: bool = false;
 
@@ -143,9 +143,9 @@ pub async fn task_stepper(
     motion_planner: hwa::controllers::MotionPlannerRef,
     _watchdog: hwa::WatchdogRef,
 ) {
-    let mut steppers_off = true;
+    let mut axes_off = true;
 
-    let mut real_steppper_pos: TVector<i32> = TVector::zero();
+    let mut real_axis_pos: TVector<i32> = TVector::zero();
 
     let micro_segment_period_secs: Real =
         Real::from_lit(STEPPER_PLANNER_MICROSEGMENT_PERIOD_US as i64, 6);
@@ -184,9 +184,9 @@ pub async fn task_stepper(
             // Timeout
             Err(_) => {
                 hwa::trace!("stepper_task timeout");
-                if !steppers_off {
+                if !axes_off {
                     park(&motion_planner).await;
-                    steppers_off = true;
+                    axes_off = true;
                 }
                 #[cfg(test)]
                 if crate::control::task_integration::INTEGRATION_STATUS.signaled() {
@@ -204,8 +204,9 @@ pub async fn task_stepper(
                     }
                 }
 
-                #[cfg(feature = "verbose-timings")]
+                // #[cfg(feature = "verbose-timings")]
                 let t0 = embassy_time::Instant::now();
+                let ref_instant = t0;
                 #[cfg(feature = "verbose-timings")]
                 let mut tq = 0;
 
@@ -291,12 +292,12 @@ pub async fn task_stepper(
                                     .set(StepperChannel::E, cs.1.is_defined_positive());
                             }
                         });
-                        if steppers_off {
+                        if axes_off {
                             #[cfg(feature = "trace-commands")]
                             hwa::info!("\tPowering steppers on");
                             unpark(&motion_planner, false).await;
                         }
-                        steppers_off = false;
+                        axes_off = false;
 
                         //#[cfg(feature = "verbose-timings")]
                         //let leap = global_timer.elapsed();
@@ -308,6 +309,8 @@ pub async fn task_stepper(
                         //// MICRO-SEGMENTS INTERP START
                         ////
                         hwa::debug!("Segment interpolation START");
+                        
+                        SERVO_DRIVER.push(ref_instant, motion_profile, stepper_enable_flags, stepper_dir_fwd_flags);
 
                         let mut prev_time = math::ZERO;
                         let mut p0 = math::ZERO;
@@ -418,18 +421,18 @@ pub async fn task_stepper(
                             let adv_steps = microsegment_interpolator.advanced_steps();
                             if let Some(c) = segment.segment_data.unit_vector_dir.x {
                                 if c.is_defined_positive() {
-                                    real_steppper_pos.set_coord(
+                                    real_axis_pos.set_coord(
                                         CoordSel::X,
                                         Some(
-                                            real_steppper_pos.x.unwrap()
+                                            real_axis_pos.x.unwrap()
                                                 + adv_steps.x.unwrap().to_i32().unwrap(),
                                         ),
                                     );
                                 } else {
-                                    real_steppper_pos.set_coord(
+                                    real_axis_pos.set_coord(
                                         CoordSel::X,
                                         Some(
-                                            real_steppper_pos.x.unwrap()
+                                            real_axis_pos.x.unwrap()
                                                 - adv_steps.x.unwrap().to_i32().unwrap(),
                                         ),
                                     );
@@ -437,18 +440,18 @@ pub async fn task_stepper(
                             }
                             if let Some(c) = segment.segment_data.unit_vector_dir.y {
                                 if c.is_defined_positive() {
-                                    real_steppper_pos.set_coord(
+                                    real_axis_pos.set_coord(
                                         CoordSel::Y,
                                         Some(
-                                            real_steppper_pos.y.unwrap()
+                                            real_axis_pos.y.unwrap()
                                                 + adv_steps.y.unwrap().to_i32().unwrap(),
                                         ),
                                     );
                                 } else {
-                                    real_steppper_pos.set_coord(
+                                    real_axis_pos.set_coord(
                                         CoordSel::Y,
                                         Some(
-                                            real_steppper_pos.y.unwrap()
+                                            real_axis_pos.y.unwrap()
                                                 - adv_steps.y.unwrap().to_i32().unwrap(),
                                         ),
                                     );
@@ -456,18 +459,18 @@ pub async fn task_stepper(
                             }
                             if let Some(c) = segment.segment_data.unit_vector_dir.z {
                                 if c.is_defined_positive() {
-                                    real_steppper_pos.set_coord(
+                                    real_axis_pos.set_coord(
                                         CoordSel::Z,
                                         Some(
-                                            real_steppper_pos.z.unwrap()
+                                            real_axis_pos.z.unwrap()
                                                 + adv_steps.z.unwrap().to_i32().unwrap(),
                                         ),
                                     );
                                 } else {
-                                    real_steppper_pos.set_coord(
+                                    real_axis_pos.set_coord(
                                         CoordSel::Z,
                                         Some(
-                                            real_steppper_pos.z.unwrap()
+                                            real_axis_pos.z.unwrap()
                                                 - adv_steps.z.unwrap().to_i32().unwrap(),
                                         ),
                                     );
@@ -475,7 +478,7 @@ pub async fn task_stepper(
                             }
                         }
 
-                        hwa::debug!(" + POS: {}", real_steppper_pos);
+                        hwa::debug!(" + POS: {}", real_axis_pos);
                         let _moves_left = motion_planner
                             .consume_current_segment_data(&event_bus)
                             .await;
@@ -518,11 +521,11 @@ pub async fn task_stepper(
             Ok(None) => {
                 hwa::debug!("Homing init");
 
-                if steppers_off {
+                if axes_off {
                     #[cfg(feature = "trace-commands")]
                     hwa::info!("\tPowering steppers on");
                     unpark(&motion_planner, true).await;
-                    steppers_off = false;
+                    axes_off = false;
                 }
                 cfg_if::cfg_if! {
                     if #[cfg(feature="debug-skip-homing")] {
@@ -537,7 +540,7 @@ pub async fn task_stepper(
                 motion_planner
                     .consume_current_segment_data(&event_bus)
                     .await;
-                real_steppper_pos.set_coord(CoordSel::all(), Some(0));
+                real_axis_pos.set_coord(CoordSel::all(), Some(0));
                 hwa::debug!("Homing done");
             }
         }

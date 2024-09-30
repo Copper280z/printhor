@@ -274,6 +274,7 @@ pub struct Times {
 /// * `q1` - Displacement or position to be achieved (in mm).
 /// * `constraints` - Constraints applied to the motion profile.
 /// * `cache` - Cached values for optimization and repeated calculations.
+#[derive(Clone, Copy)]
 pub struct SCurveMotionProfile {
     /// Time spent in the first jerk phase.
     pub t_j1: Real,
@@ -320,6 +321,9 @@ pub struct SCurveMotionProfile {
 
 #[allow(unused)]
 impl SCurveMotionProfile {
+    pub fn mp(self) -> impl MotionProfile{
+        self
+    }
     /// Compute the S-curve motion profile.
     ///
     /// # Arguments

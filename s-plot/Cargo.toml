@@ -14,10 +14,14 @@ status = "experimental"
 
 [features]
 
-default = ["native",
+default = [
+    "with-spi",
+    "native",
     "cornering",
     "assert-motion",
-    "printhor-hwa-common/with-log", "with-motion", "printhor-hwa-common/with-motion"
+    "printhor-hwa-common/with-log", 
+    "with-motion", 
+    "printhor-hwa-common/with-motion"
 ]
 # Hardware device features
 without-bootloader = []
@@ -127,7 +131,7 @@ strip = false
 incremental = false
 debug-assertions = true
 #opt-level = "s"
-lto = true
+lto = false
 panic = "unwind"
 
 [profile.release]

@@ -181,12 +181,12 @@ async fn spawn_tasks(
         #[cfg_attr(not(target_arch = "aarch64"), link_section = ".bss")]
         #[cfg_attr(target_arch = "aarch64", link_section = "__DATA,.bss")]
         static PROBE_CONTROLLER_INST: hwa::TrackedStaticCell<
-            printhor_hwa_common::InterruptControllerMutex<hwa::controllers::ServoController>,
+            printhor_hwa_common::InterruptControllerMutex<hwa::controllers::RCServoController>,
         > = hwa::TrackedStaticCell::new();
         hwa::ControllerRef::new(PROBE_CONTROLLER_INST.init::<{ hwa::MAX_STATIC_MEMORY }>(
             "ProbeServoController",
             printhor_hwa_common::InterruptControllerMutex::new(
-                hwa::controllers::ServoController::new(
+                hwa::controllers::RCServoController::new(
                     _pwm_devices.probe.power_pwm,
                     _pwm_devices.probe.power_channel,
                 ),
