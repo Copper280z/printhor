@@ -24,7 +24,9 @@ use hwa::{EventFlags, EventStatus};
 use hwa::controllers::motion::SegmentIterator;
 use hwa::controllers::LinearMicrosegmentStepInterpolator;
 use hwa::controllers::motion::{STEP_DRIVER, SERVO_DRIVER};
-
+// use crate::hwa::controllers::SPIServoTransport;
+// use printhor_hwa_common::InterruptControllerMutex;
+// use printhor_hwi_native::device::{Spi, SpiDeviceRef};
 const DO_NOTHING: bool = false;
 
 ///
@@ -154,6 +156,13 @@ pub async fn task_stepper(
     motion_planner.start(&event_bus).await;
 
     STEP_DRIVER.setup(motion_planner.motion_driver());
+
+    // let spidev = Spi::new();
+    // let mutex = InterruptControllerMutex::<Spi>::new(spidev);
+    // let spidevref = SpiDeviceRef::new(&mutex);
+    // let transport = SPIServoTransport::new(spidevref);
+
+    // SERVO_DRIVER.setup(transport);
 
     let mut s = event_bus.subscriber().await;
 
@@ -310,7 +319,7 @@ pub async fn task_stepper(
                         ////
                         hwa::debug!("Segment interpolation START");
                         
-                        SERVO_DRIVER.push(ref_instant, motion_profile, stepper_enable_flags, stepper_dir_fwd_flags);
+                        SERVO_DRIVER.push(ref_instant, segment.segment_data.unit_vector_dir.abs(), motion_profile, stepper_enable_flags, stepper_dir_fwd_flags);
 
                         let mut prev_time = math::ZERO;
                         let mut p0 = math::ZERO;

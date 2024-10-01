@@ -5,7 +5,7 @@ use embassy_sync::waitqueue::WakerRegistration;
 use printhor_hwa_common::StepperChannel;
 use crate::hwa::controllers::SPIServoTransport;
 use crate::control::motion::SCurveMotionProfile;
-use crate::hwa;
+use crate::{hwa, TVector};
 use crate::hwa::controllers::{MultiTimer, StepPlanner};
 use crate::hwa::drivers::motion_driver::MotionDriverRef;
 use crate::math::{Real, ONE_MILLION};
@@ -724,6 +724,8 @@ pub extern "Rust" fn do_tick() {
 }
 
 pub struct SoftTimerServoDriver {
+// all of the new bits that make up the info to use the profile should go into a struct
+
     /// The current step planner in use.
     profile: Option<SCurveMotionProfile>,
     next_profile: Option<SCurveMotionProfile>,
@@ -747,6 +749,13 @@ pub struct SoftTimerServoDriver {
 
     /// Flags indicating the current forward direction stepper channels.
     current_axis_dir_fwd_flags: StepperChannel,
+
+    next_axis_enable_flags: StepperChannel,
+    next_axis_dir_fwd_flags: StepperChannel,
+
+    direction_unit_vector: TVector<Real>,
+    next_direction_unit_vector: TVector<Real>,
+
 
 }
 
@@ -784,6 +793,7 @@ impl SoftTimerServoDriver {
         match &self.profile {
             None =>{},
             Some(_p) => {
+                // elapsed time in seconds
                 let elapsed = Real::from_f32(self.ref_time.elapsed().as_micros() as f32)/ONE_MILLION;
                 if elapsed > _p.end_time() {
                     match &self.next_profile {
@@ -794,6 +804,10 @@ impl SoftTimerServoDriver {
                         },
                         Some(_np) => {
                             self.profile.replace(*_np); // maybe bad idea to copy?
+                            self.current_axis_dir_fwd_flags = self.next_axis_dir_fwd_flags;
+                            self.current_axis_enable_flags = self.next_axis_enable_flags;
+                            self.direction_unit_vector = self.next_direction_unit_vector;
+
                             self.next_profile = None;
                             self.ref_time = self.next_ref_time;
                         }
@@ -804,9 +818,13 @@ impl SoftTimerServoDriver {
                     let pos = _p.mp().eval_position(elapsed).unwrap().0;
                     let vel = _p.mp().eval_velocity(elapsed).unwrap().0;
                     let acc = _p.mp().eval_accel(elapsed).unwrap().0;
-
+                    println!("pos: {:.3}", pos);
+                    println!("vel: {:.3}", vel);
+                    println!("acc: {:.3}\n", acc);
                     match &self.transport {
-                        None => {},
+                        None => {
+                            // panic!("Tried to send to servo controller, but no transport defined!")
+                        },
                         Some(_t) => {
                             _t.send_motion(pos, vel, acc);
                         }
@@ -859,6 +877,11 @@ impl ServoSoftTimer {
                 transport: None,
                 current_axis_enable_flags: StepperChannel::empty(),
                 current_axis_dir_fwd_flags: StepperChannel::empty(),
+                next_axis_enable_flags: StepperChannel::empty(),
+                next_axis_dir_fwd_flags: StepperChannel::empty(),
+                direction_unit_vector: TVector::<Real>::new(),
+                next_direction_unit_vector: TVector::<Real>::new(),
+
             }
         )
     ))
@@ -929,23 +952,39 @@ impl ServoSoftTimer {
     pub fn push(
         &self,
         ref_instant: embassy_time::Instant,
+        direction_unit_vector: TVector<Real>,
         new_profile: SCurveMotionProfile,
         axis_enable_flags: StepperChannel,
         axis_dir_fwd_flags: StepperChannel,
     ) {
         critical_section::with(|cs| {
             let mut r = self.0.borrow_ref_mut(cs);
-            if r.state == State::Idle {
-                r.profile.replace(new_profile);
-                r.ref_time=ref_instant;
-            } else if r.next_profile.is_none() {
-                r.next_profile.replace(new_profile);
-                r.next_ref_time = ref_instant;
-            } else {
-                unreachable!("tried to queue up too many motion profiles, you better fix it!")
+            // this is all wrong
+            match r.next_profile {
+                None =>{
+                    match r.state {
+                        State::Idle => {
+                            r.profile.replace(new_profile);
+                            r.ref_time=ref_instant;
+                            r.current_axis_enable_flags = axis_enable_flags;
+                            r.current_axis_dir_fwd_flags = axis_dir_fwd_flags;
+                            r.direction_unit_vector = direction_unit_vector;
+                        },
+                        State::Duty => {
+                            r.next_profile.replace(new_profile);
+                            r.next_ref_time = ref_instant;
+                            r.next_axis_enable_flags = axis_enable_flags;
+                            r.next_axis_dir_fwd_flags = axis_dir_fwd_flags;
+                            r.next_direction_unit_vector = direction_unit_vector;
+                        }
+                    }
+                },
+                Some(_) =>{
+                    unreachable!("tried to queue up too many motion profiles, you better fix it!")
+                }
             }
-            r.current_axis_enable_flags = axis_enable_flags;
-            r.current_axis_dir_fwd_flags = axis_dir_fwd_flags;
+
+
         })
     }
 
