@@ -157,12 +157,6 @@ pub async fn task_stepper(
 
     STEP_DRIVER.setup(motion_planner.motion_driver());
 
-    // let spidev = Spi::new();
-    // let mutex = InterruptControllerMutex::<Spi>::new(spidev);
-    // let spidevref = SpiDeviceRef::new(&mutex);
-    // let transport = SPIServoTransport::new(spidevref);
-
-    // SERVO_DRIVER.setup(transport);
 
     let mut s = event_bus.subscriber().await;
 

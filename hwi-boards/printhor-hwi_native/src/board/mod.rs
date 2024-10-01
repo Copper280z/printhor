@@ -126,6 +126,8 @@ pub struct IODevices {
     pub display_device: device::DisplayDevice,
     #[cfg(feature = "with-sdcard")]
     pub sdcard_device: device::SDCardBlockDevice,
+    #[cfg(feature = "with-spi")]
+    pub spi_device: device::SpiDeviceRef
 }
 
 pub struct PwmDevices {
@@ -354,6 +356,8 @@ pub async fn setup(_spawner: Spawner, _p: HWIPeripherals) -> MachineContext<Cont
             display_device,
             #[cfg(feature = "with-sdcard")]
             sdcard_device,
+            #[cfg(feature = "with-spi")]
+            spi_device: spi1_device,
         },
         motion: MotionDevices {
             #[cfg(feature = "with-motion")]

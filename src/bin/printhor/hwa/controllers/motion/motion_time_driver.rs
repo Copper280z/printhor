@@ -818,9 +818,16 @@ impl SoftTimerServoDriver {
                     let pos = _p.mp().eval_position(elapsed).unwrap().0;
                     let vel = _p.mp().eval_velocity(elapsed).unwrap().0;
                     let acc = _p.mp().eval_accel(elapsed).unwrap().0;
-                    println!("pos: {:.3}", pos);
-                    println!("vel: {:.3}", vel);
-                    println!("acc: {:.3}\n", acc);
+                    // need to scale by unit vector components
+                    let dir =  if self.current_axis_dir_fwd_flags.contains(StepperChannel::X) {
+                        Real::one()
+                    } else {
+                        Real::from_f32(-1.0f32)
+                    };
+                    
+                    println!("pos: {:.3}", pos*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    println!("vel: {:.3}", vel*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    println!("acc: {:.3}\n", acc*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
                     match &self.transport {
                         None => {
                             // panic!("Tried to send to servo controller, but no transport defined!")

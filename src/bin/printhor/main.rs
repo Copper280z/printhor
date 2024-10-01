@@ -13,6 +13,7 @@ pub mod machine;
 pub mod math;
 pub mod tgeo;
 
+use hwa::controllers::{SPIServoTransport, SERVO_DRIVER};
 pub use tgeo::TVector;
 
 use crate::control::task_control::ControlTaskControllers;
@@ -151,6 +152,9 @@ async fn spawn_tasks(
     _pwm_devices: PwmDevices,
     _wd: hwa::WatchdogRef,
 ) -> Result<(), ()> {
+
+    let trans = SPIServoTransport::new(_io_devices.spi_device);
+    SERVO_DRIVER.setup(trans);
 
     #[cfg(all(feature = "with-sdcard", feature = "sdcard-uses-spi"))]
     let sdcard_adapter =

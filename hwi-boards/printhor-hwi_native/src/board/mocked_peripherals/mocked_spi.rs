@@ -24,6 +24,7 @@ impl embedded_hal_02::blocking::spi::Transfer<u8> for MockedSpi {
 impl embedded_hal_02::blocking::spi::Write<u8> for MockedSpi {
     type Error = core::convert::Infallible;
     fn write<'w>(&mut self, _words: &'w [u8]) -> Result<(), Self::Error> {
+        println!("SPI Periph Write!");
         Ok(())
     }
 }
