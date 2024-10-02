@@ -13,6 +13,7 @@ use critical_section::Mutex as CsMutex;
 use crate::control::motion::profile::MotionProfile;
 
 use super::TransportTrait;
+use defmt::println;
 
 /// The size of the timer queue.
 const TIMER_QUEUE_SIZE: usize = 4;
@@ -825,9 +826,9 @@ impl SoftTimerServoDriver {
                         Real::from_f32(-1.0f32)
                     };
                     
-                    println!("pos: {:.3}", pos*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
-                    println!("vel: {:.3}", vel*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
-                    println!("acc: {:.3}\n", acc*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    println!("pos: {:?}", pos*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    println!("vel: {:?}", vel*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    println!("acc: {:?}\n", acc*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
                     match &self.transport {
                         None => {
                             // panic!("Tried to send to servo controller, but no transport defined!")
@@ -924,7 +925,7 @@ impl ServoSoftTimer {
     }
 
     
-    /// Pushes a multi-timer segment onto the internal queue.
+    /// Pushes motion profile information onto the internal double buffer.
     ///
     /// This method enqueues a multi-timer segment, along with flags for stepper 
     /// motor channel enablement and direction, into the `SoftTimer` queue. The

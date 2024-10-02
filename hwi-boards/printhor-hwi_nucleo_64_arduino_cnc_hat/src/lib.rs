@@ -7,6 +7,7 @@ pub use defmt;
 
 cfg_if::cfg_if! {
     if #[cfg(feature="nucleo64-l476rg")] {
+        pub use crate::board_stm32l4::*;
         mod board_stm32l4;
         pub mod board {
             pub use crate::board_stm32l4::SysDevices;
@@ -49,6 +50,7 @@ cfg_if::cfg_if! {
         }
     }
     else if #[cfg(feature="nucleo64-f410rb")] {
+        pub use crate::board_stm32f4::*;
         mod board_stm32f4;
         pub mod board {
             pub use crate::board_stm32f4::SysDevices;

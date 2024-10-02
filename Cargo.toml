@@ -22,11 +22,13 @@ verbose-timings = ["printhor-hwi_native?/verbose-timings", "printhor-hwi_skr_min
 # A specific hack to verify motion distances match the expectations
 assert-motion = []
 default = [
-    "embassy-executor/executor-thread", 
-    "embassy-executor/arch-std", 
+    # "embassy-executor/executor-thread", 
+    # "embassy-executor/arch-std", 
     # "mks_robin_nano",
-    "native",
-    "with-spi"]
+    "nucleo64-l476rg",
+    # "native",
+    # "with-spi"
+    ]
 
 # Hardware device features
 without-bootloader = []
@@ -166,9 +168,9 @@ native = [
     "with-ps-on", "printhor-hwi_native/with-ps-on",
     #"with-display", "printhor-hwi_native/with-display",
 
-    "float-point-f32-impl",
+    # "float-point-f32-impl",
     #"float-point-f64-impl",
-    #"fixed-point-128-impl",
+    "fixed-point-128-impl",
 
     "with-x-axis", "with-y-axis", "with-z-axis", "with-e-axis",
 
@@ -229,7 +231,7 @@ nucleo64-l476rg = [
     "with-motion", "printhor-hwi_nucleo_64_arduino_cnc_hat/with-motion",
     "with-serial-usb", "printhor-hwi_nucleo_64_arduino_cnc_hat/with-serial-usb", # Useless Nucleo64 attachs USART2 # Not working either
     "with-serial-port-1", "printhor-hwi_nucleo_64_arduino_cnc_hat/with-serial-port-1",
-    #"with-spi", "printhor-hwi_nucleo_64_arduino_cnc_hat/with-spi",
+    "with-spi", "printhor-hwi_nucleo_64_arduino_cnc_hat/with-spi",
     #"with-sdcard", "sdcard-uses-spi", "printhor-hwi_nucleo_64_arduino_cnc_hat/with-sdcard", "printhor-hwi_nucleo_64_arduino_cnc_hat/sdcard-uses-spi",
     #"with-printjob", "printhor-hwi_nucleo_64_arduino_cnc_hat/with-printjob",
     "with-probe", "printhor-hwi_nucleo_64_arduino_cnc_hat/with-probe",
@@ -244,7 +246,8 @@ nucleo64-l476rg = [
     "float-point-f32-impl",
     #"float-point-f64-impl",
     #"fixed-point-128-impl",
-
+    # "embassy-executor/executor-thread", "cortex-m-rt", "cortex-m",
+    "nucleo_64_arduino_cnc_hat",
     "printhor-hwi_nucleo_64_arduino_cnc_hat/nucleo64-l476rg",
 ]
 
@@ -403,7 +406,7 @@ defmt = {version = "0.3.8", optional = true, default-features = false, features 
 panic-probe = { version = "0.3.2", features = ["print-defmt"], optional = true}
 defmt-rtt = { version = "0.4.1", optional = true }
 
-cortex-m = { version = "0.7.7", features = ["inline-asm"], optional = true }
+cortex-m = { version = "0.7.7", features = ["inline-asm","critical-section-single-core"], optional = true }
 cortex-m-rt = { version = "0.7.3", optional = true}
 alloc-cortex-m = { version = "0.4.4", optional = true}
 critical-section = {version = "1.1.2", default-features = false}

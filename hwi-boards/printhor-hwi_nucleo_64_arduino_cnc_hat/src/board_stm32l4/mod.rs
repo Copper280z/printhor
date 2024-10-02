@@ -102,6 +102,8 @@ pub struct IODevices {
     pub sdcard_device: device::SpiCardDeviceRef,
     #[cfg(feature = "with-sdcard")]
     pub sdcard_cs_pin: device::SpiCardCSPin,
+    #[cfg(feature = "with-spi")]
+    pub spi_device: device::SpiDeviceRef
 }
 
 pub struct PwmDevices {
@@ -285,18 +287,33 @@ pub async fn setup(_spawner: Spawner, p: embassy_stm32::Peripherals) -> printhor
         let mut cfg = spi::Config::default();
         cfg.frequency = embassy_stm32::time::Hertz(SPI_FREQUENCY_HZ);
         #[link_section = ".bss"]
-        static SPI_INST: TrackedStaticCell<InterruptControllerMutex<device::SpiCardDevice>> = TrackedStaticCell::new();
+        static SPI_INST: TrackedStaticCell<InterruptControllerMutex<device::Spi1>> = TrackedStaticCell::new();
         ControllerRef::new(
             SPI_INST.init::<{crate::MAX_STATIC_MEMORY}>(
                 "SPI",
                 ControllerMutex::new(
-                    device::SpiCardDevice::new(p.SPI3, p.PC10, p.PC12, p.PC11,
+                    device::Spi1::new(p.SPI3, p.PC10, p.PC12, p.PC11,
                                       p.DMA2_CH2, p.DMA2_CH1, cfg
                     )
                 )
             )
         )
     };
+
+    // let spi1_device = {
+    //     let mut cfg = spi::Config::default();
+    //     cfg.frequency = embassy_stm32::time::Hertz(SPI_FREQUENCY_HZ);
+    //     #[link_section = ".bss"]
+    //     static SPI1_INST: TrackedStaticCell<printhor_hwa_common::InterruptControllerMutex<device::Spi1>> = TrackedStaticCell::new();
+    //     ControllerRef::new(SPI1_INST.init::<{crate::MAX_STATIC_MEMORY}>(
+    //         "SPI1",
+    //         ControllerMutex::new(
+    //             device::Spi1::new(p.SPI3, p.PC10, p.PC12, p.PC11,
+    //                               p.DMA1_CH5, p.DMA1_CH0, cfg
+    //             )
+    //         )
+    //     ))
+    // };
 
     #[cfg(feature = "with-sdcard")]
     let (sdcard_device, sdcard_cs_pin) = {
@@ -505,6 +522,8 @@ pub async fn setup(_spawner: Spawner, p: embassy_stm32::Peripherals) -> printhor
             sdcard_device,
             #[cfg(feature = "with-sdcard")]
             sdcard_cs_pin,
+            #[cfg(feature = "with-spi")]
+            spi_device: spi1_device,
         },
         motion: MotionDevices {
             #[cfg(feature = "with-motion")]
