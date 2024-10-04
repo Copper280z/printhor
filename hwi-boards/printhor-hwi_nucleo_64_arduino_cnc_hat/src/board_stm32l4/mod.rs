@@ -17,6 +17,10 @@ use embassy_stm32::spi;
 use printhor_hwa_common::{ControllerMutex, ControllerRef, ControllerMutexType};
 use printhor_hwa_common::{TrackedStaticCell, MachineContext, InterruptControllerMutex};
 
+use embassy_stm32::time::Hertz;
+use embassy_stm32::interrupt;
+
+
 #[global_allocator]
 #[link_section = ".bss"]
 static HEAP: CortexMHeap = CortexMHeap::empty();
@@ -34,7 +38,7 @@ pub const ADC_START_TIME_US: u16 = 12;
 pub const ADC_VREF_DEFAULT_MV: u16 = 1212;
 
 /// Micro-segment sampling frequency in Hz
-pub const STEPPER_PLANNER_MICROSEGMENT_FREQUENCY: u32 = 100;
+pub const STEPPER_PLANNER_MICROSEGMENT_FREQUENCY: u32 = 1000;
 /// Micro-segment clock frequency in Hz
 pub const STEPPER_PLANNER_CLOCK_FREQUENCY: u32 = 100_000;
 
@@ -44,7 +48,7 @@ pub const MAX_STATIC_MEMORY: usize = 4096;
 pub const SDCARD_PARTITION: usize = 0;
 pub const WATCHDOG_TIMEOUT: u32 = 30_000_000;
 #[cfg(feature = "with-spi")]
-pub const SPI_FREQUENCY_HZ: u32 = 2_000_000;
+pub const SPI_FREQUENCY_HZ: u32 = 24_000_000;
 
 cfg_if::cfg_if! {
     if #[cfg(feature="with-hot-end")] {
@@ -91,6 +95,7 @@ pub struct SysDevices {
     pub task_stepper_core: printhor_hwa_common::NoDevice,
     #[cfg(feature = "with-ps-on")]
     pub ps_on: device::PsOnRef,
+    // pub servo_timer: device::ServoTimer
 }
 
 pub struct IODevices {
@@ -210,7 +215,6 @@ pub fn init() -> embassy_stm32::Peripherals {
             divr: Some(embassy_stm32::rcc::PllRDiv::DIV2), // PLLSAl1R 48Mhz (16 / 2 * 12 / 2)
             divq: Some(embassy_stm32::rcc::PllQDiv::DIV2), // PLLSAl1Q 48Mhz (16 / 2 * 12 / 2)
         });
-
         config.rcc.mux.clk48sel = embassy_stm32::rcc::mux::Clk48sel::PLLSAI1_Q;
         config.rcc.mux.adcsel = embassy_stm32::rcc::mux::Adcsel::SYS;
         config.rcc.ahb_pre = embassy_stm32::rcc::AHBPrescaler::DIV1;
@@ -314,6 +318,26 @@ pub async fn setup(_spawner: Spawner, p: embassy_stm32::Peripherals) -> printhor
     //         )
     //     ))
     // };
+    static SERVO_TIMER_INST: TrackedStaticCell<device::ServoTimer> = TrackedStaticCell::new();
+    let servo_timer = SERVO_TIMER_INST.init::<{crate::MAX_STATIC_MEMORY}>(
+        "ServoTimer",
+            device::ServoTimer::new(p.TIM7)
+    );
+
+    // let servo_timer = device::ServoTimer::new(p.TIM7);
+    servo_timer.set_frequency(Hertz(1000));
+    // autoreload preload?
+    // servo_timer.set_counting_mode();
+    servo_timer.enable_update_interrupt(true);
+    servo_timer.start();
+    unsafe { 
+        let mut periph = cortex_m::Peripherals::take().unwrap();
+        cortex_m::peripheral::NVIC::unmask(interrupt::TIM7);
+        // let mut nvic = embassy_stm32::
+        periph.NVIC.set_priority(interrupt::TIM7, 8);
+    };
+    defmt::info!("timer started(?)");
+
 
     #[cfg(feature = "with-sdcard")]
     let (sdcard_device, sdcard_cs_pin) = {
@@ -499,6 +523,13 @@ pub async fn setup(_spawner: Spawner, p: embassy_stm32::Peripherals) -> printhor
     defmt::info!("Setup timer...");
     crate::setup_timer();
 
+    // servo_timer.set_frequency(Hertz(5000));
+    // // autoreload preload?
+    // servo_timer.enable_update_interrupt(true);
+    // servo_timer.start();
+    // unsafe { cortex_m::peripheral::NVIC::unmask(interrupt::TIM7) };
+    // defmt::info!("servo timer started again");
+
     defmt::info!("All done");
     MachineContext {
         controllers: Controllers {
@@ -512,6 +543,7 @@ pub async fn setup(_spawner: Spawner, p: embassy_stm32::Peripherals) -> printhor
             task_stepper_core: printhor_hwa_common::NoDevice::new(),
             #[cfg(feature = "with-ps-on")]
             ps_on,
+            // servo_timer: &*servo_timer
         },
         io_devices: IODevices {
             #[cfg(feature = "with-serial-usb")]

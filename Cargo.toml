@@ -27,7 +27,7 @@ default = [
     # "mks_robin_nano",
     "nucleo64-l476rg",
     # "native",
-    # "with-spi"
+    "with-spi"
     ]
 
 # Hardware device features
@@ -222,6 +222,7 @@ mks_robin_nano = [
 #################
 
 nucleo64-l476rg = [
+    # "with-defmt",
     "cornering",
     #"nightly",
     #"executor-interrupt",
@@ -486,7 +487,7 @@ strip = false
 incremental = false
 debug-assertions = true
 overflow-checks = true
-#opt-level = "z" # disable to play with GDB
+# opt-level = "z" # disable to play with GDB
 lto = true
 panic = "unwind"
 

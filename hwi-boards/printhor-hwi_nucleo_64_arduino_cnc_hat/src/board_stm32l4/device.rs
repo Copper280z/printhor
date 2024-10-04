@@ -5,6 +5,7 @@ use embassy_stm32::{
     exti::ExtiInput,
     timer::simple_pwm::SimplePwm
 };
+use embassy_stm32::timer;
 
 cfg_if::cfg_if! {
     if #[cfg(feature="with-serial-usb")] {
@@ -102,6 +103,7 @@ pub type Watchdog = wdg::IndependentWatchdog<'static,
     embassy_stm32::peripherals::IWDG
 >;
 
+pub type ServoTimer = timer::low_level::Timer<'static, embassy_stm32::peripherals::TIM7>;
 
 #[cfg(feature = "with-probe")]
 pub struct ProbePeripherals {

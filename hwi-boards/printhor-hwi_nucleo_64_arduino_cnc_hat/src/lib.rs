@@ -1,13 +1,15 @@
 #![no_std]
 #![allow(stable_features)]
 extern crate alloc;
+use embassy_stm32::interrupt;
+use embassy_stm32::pac;
 
 pub use defmt::{trace, debug, info, warn, error};
 pub use defmt;
 
 cfg_if::cfg_if! {
     if #[cfg(feature="nucleo64-l476rg")] {
-        pub use crate::board_stm32l4::*;
+        // pub use crate::board_stm32l4::*;
         mod board_stm32l4;
         pub mod board {
             pub use crate::board_stm32l4::SysDevices;
@@ -50,7 +52,7 @@ cfg_if::cfg_if! {
         }
     }
     else if #[cfg(feature="nucleo64-f410rb")] {
-        pub use crate::board_stm32f4::*;
+        // pub use crate::board_stm32f4::*;
         mod board_stm32f4;
         pub mod board {
             pub use crate::board_stm32f4::SysDevices;
@@ -165,3 +167,41 @@ pub fn resume_ticker() {
 pub fn init_logger() {
 }
 
+extern "Rust" {fn servo_tick();}
+#[interrupt]
+fn TIM7() {
+    unsafe {
+        servo_tick();
+    }
+    pac::TIM7.sr().modify(|r| r.set_uif(false));
+}
+
+// #[embassy_executor::task]
+// pub async fn servo_timer_ticker(spi_inst: Spi, 
+//     sck_pin:SckPin,mosi_pin:MosiPin,miso_pin: MisoPin, 
+//       tx_dma:DmaChannel, rx_dma:DmaChannel) {
+//     let mut t = embassy_time::Ticker::every(Duration::from_micros((1_000_000 / 5000) as u64));
+    
+//     let mut cfg = spi::Config::default();
+//     cfg.frequency = embassy_stm32::time::Hertz(8_000_000);
+    
+//     let spi = device::Spi1::new(spi_inst, sck_pin, mosi_pin, miso_pin,
+//         tx_dma, rx_dma, cfg);
+
+//     let trans = SPIServoTransport::new(spi);
+//     SERVO_DRIVER.setup(&trans);
+
+//     loop {
+//         // if embassy_time::with_timeout(Duration::from_secs(5), TICKER_SIGNAL.wait()).await.is_err() {
+//         //     if TERMINATION.signaled() {
+//         //         info!("[servo_timer_ticker] Ending gracefully");
+//         //         return ();
+//         //     }
+//         //     continue;
+//         // }
+//         unsafe {
+//             servo_tick();
+//         }
+//         t.next().await;
+//     }
+// }

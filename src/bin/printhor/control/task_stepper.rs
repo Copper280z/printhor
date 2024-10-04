@@ -199,7 +199,7 @@ pub async fn task_stepper(
             }
             // Process segment plan
             Ok(Some((segment, channel))) => {
-
+                hwa::info!("Task Stepper got segment");
                 match s.ft_wait_for(EventStatus::containing(EventFlags::ATX_ON)).await {
                     Ok(_) => {}
                     Err(_) => {
@@ -311,9 +311,11 @@ pub async fn task_stepper(
                         ////
                         //// MICRO-SEGMENTS INTERP START
                         ////
-                        hwa::debug!("Segment interpolation START");
+                        let unit_vector = segment.segment_data.unit_vector_dir.abs();
+                        hwa::info!("Segment interpolation START");
                         
-                        SERVO_DRIVER.push(ref_instant, segment.segment_data.unit_vector_dir.abs(), motion_profile, stepper_enable_flags, stepper_dir_fwd_flags);
+                        SERVO_DRIVER.push(ref_instant, unit_vector, motion_profile, stepper_enable_flags, stepper_dir_fwd_flags);
+                        hwa::info!("Pushed to servo driver");
 
                         let mut prev_time = math::ZERO;
                         let mut p0 = math::ZERO;

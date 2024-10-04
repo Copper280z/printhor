@@ -95,7 +95,7 @@ async fn sys_start(spawner: embassy_executor::Spawner) -> Result<hwa::StandardCo
 
     let wdt = context.controllers.sys_watchdog.clone();
     wdt.lock().await.unleash();
-
+    
     if spawn_tasks(
         spawner,
         event_bus.clone(),
@@ -152,7 +152,7 @@ async fn spawn_tasks(
     _pwm_devices: PwmDevices,
     _wd: hwa::WatchdogRef,
 ) -> Result<(), ()> {
-
+    
     let trans = SPIServoTransport::new(_io_devices.spi_device);
     SERVO_DRIVER.setup(trans);
 

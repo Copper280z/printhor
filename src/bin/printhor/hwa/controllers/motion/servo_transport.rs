@@ -2,7 +2,6 @@
 
 use crate::hwa;
 use crate::math::Real;
-use embedded_hal_02::prelude::_embedded_hal_blocking_spi_Write;
 // use cfg_if;
 // #[allow(unused)]
 // use embedded_hal_02::Pwm;
@@ -29,6 +28,7 @@ pub trait TransportTrait {
 /// * `transport` - A reference to an interrupt-controlled spi hardware instance.
 /// 
 #[cfg(feature = "with-spi")]
+#[derive(Clone)]
 pub struct SPIServoTransport {
     /// A reference to an interrupt-controlled spi hardware instance.
     transport: hwa::device::SpiDeviceRef,

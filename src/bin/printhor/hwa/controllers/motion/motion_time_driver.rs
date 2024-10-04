@@ -13,7 +13,7 @@ use critical_section::Mutex as CsMutex;
 use crate::control::motion::profile::MotionProfile;
 
 use super::TransportTrait;
-use defmt::println;
+use hwa::info;
 
 /// The size of the timer queue.
 const TIMER_QUEUE_SIZE: usize = 4;
@@ -791,6 +791,7 @@ impl SoftTimerServoDriver {
         // check if profile is active
         // if so, send_motion
         let _t0 = embassy_time::Instant::now();
+        // info!("ISR!");
         match &self.profile {
             None =>{},
             Some(_p) => {
@@ -826,12 +827,12 @@ impl SoftTimerServoDriver {
                         Real::from_f32(-1.0f32)
                     };
                     
-                    println!("pos: {:?}", pos*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
-                    println!("vel: {:?}", vel*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
-                    println!("acc: {:?}\n", acc*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    info!("pos: {:?}", pos*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    info!("vel: {:?}", vel*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    info!("acc: {:?}\n", acc*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
                     match &self.transport {
                         None => {
-                            // panic!("Tried to send to servo controller, but no transport defined!")
+                            panic!("Tried to send to servo controller, but no transport defined!")
                         },
                         Some(_t) => {
                             _t.send_motion(pos, vel, acc);
@@ -875,7 +876,7 @@ impl ServoSoftTimer {
     /// ```
     pub const fn new() -> Self {
         Self(CsMutex::new(RefCell::new(
-            SoftTimerServoDriver {
+                SoftTimerServoDriver {
                 profile: None,
                 next_profile: None,
                 ref_time: embassy_time::Instant::from_micros(0),
@@ -990,10 +991,10 @@ impl ServoSoftTimer {
                 Some(_) =>{
                     unreachable!("tried to queue up too many motion profiles, you better fix it!")
                 }
-            }
+            };
 
 
-        })
+        });
     }
 
     
