@@ -23,7 +23,7 @@ use hwa::{EventBusRef, StepperChannel};
 use hwa::{EventFlags, EventStatus};
 use hwa::controllers::motion::SegmentIterator;
 use hwa::controllers::LinearMicrosegmentStepInterpolator;
-use hwa::controllers::motion::{STEP_DRIVER, SERVO_DRIVER};
+use hwa::controllers::motion::{STEP_DRIVER, SERVO_CHANNEL, ServoData};
 // use crate::hwa::controllers::SPIServoTransport;
 // use printhor_hwa_common::InterruptControllerMutex;
 // use printhor_hwi_native::device::{Spi, SpiDeviceRef};
@@ -311,10 +311,18 @@ pub async fn task_stepper(
                         ////
                         //// MICRO-SEGMENTS INTERP START
                         ////
-                        let unit_vector = segment.segment_data.unit_vector_dir.abs();
+                        let unit_vector = segment.segment_data.unit_vector_dir;
                         hwa::info!("Segment interpolation START");
                         
-                        SERVO_DRIVER.push(ref_instant, unit_vector, motion_profile, stepper_enable_flags, stepper_dir_fwd_flags);
+                        let sdata = ServoData {
+                            profile: motion_profile,
+                            ref_time: ref_instant,
+                            axis_enable_flags: stepper_enable_flags,
+                            axis_dir_fwd_flags: stepper_dir_fwd_flags,
+                            direction_unit_vector: unit_vector};
+
+                        SERVO_CHANNEL.send(sdata).await;
+
                         hwa::info!("Pushed to servo driver");
 
                         let mut prev_time = math::ZERO;

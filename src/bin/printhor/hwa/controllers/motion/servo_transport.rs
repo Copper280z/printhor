@@ -15,7 +15,7 @@ use crate::math::Real;
 #[allow(unused)]
 #[allow(async_fn_in_trait)]
 pub trait TransportTrait {
-    fn send_motion(&self, pos: Real, vel: Real, acc: Real);
+    async fn send_motion(&self, pos: Real, vel: Real, acc: Real);
 }
 
 
@@ -45,7 +45,7 @@ impl SPIServoTransport {
 #[cfg(feature = "with-spi")]
 impl TransportTrait for SPIServoTransport {
     #[allow(unused)]
-    fn send_motion(&self, pos: Real, vel: Real, acc: Real) {
+    async fn send_motion(&self, pos: Real, vel: Real, acc: Real) {
         let words =  [pos.to_f32().to_le_bytes(),
         vel.to_f32().to_le_bytes(),
         acc.to_f32().to_le_bytes()].concat();
@@ -55,7 +55,7 @@ impl TransportTrait for SPIServoTransport {
                 panic!("Could not lock SPI mutex");
             }
             Ok(mut _spi) => {
-                _spi.write(&words);
+                _spi.write(&words).await;
             }
         }
     }

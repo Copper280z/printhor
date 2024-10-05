@@ -1,6 +1,7 @@
 use core::cell::RefCell;
 use core::future::{poll_fn, Future};
 use core::task::{Context, Poll};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::waitqueue::WakerRegistration;
 use printhor_hwa_common::StepperChannel;
 use crate::hwa::controllers::SPIServoTransport;
@@ -11,9 +12,11 @@ use crate::hwa::drivers::motion_driver::MotionDriverRef;
 use crate::math::{Real, ONE_MILLION};
 use critical_section::Mutex as CsMutex;
 use crate::control::motion::profile::MotionProfile;
-
+use embassy_time::Duration;
 use super::TransportTrait;
 use hwa::info;
+use embassy_sync::channel::Channel;
+use hwa::device::SpiDeviceRef;
 
 /// The size of the timer queue.
 const TIMER_QUEUE_SIZE: usize = 4;
@@ -724,17 +727,25 @@ pub extern "Rust" fn do_tick() {
     });
 }
 
+pub struct ServoData {
+    pub profile: SCurveMotionProfile,
+    pub ref_time: embassy_time::Instant,
+    pub axis_enable_flags: StepperChannel,
+    pub axis_dir_fwd_flags: StepperChannel, // will probably get rid of this and use the signed unit vector
+    pub direction_unit_vector: TVector<Real>,
+
+}
+
+pub type ServoChannelType = Channel<CriticalSectionRawMutex,ServoData, 10>;
+pub static SERVO_CHANNEL: ServoChannelType = ServoChannelType::new(); // I don't like this
+// pub type ServoSender = embassy_sync::channel::Sender<'static,CriticalSectionRawMutex,ServoData, 10>;
+
 pub struct SoftTimerServoDriver {
 // all of the new bits that make up the info to use the profile should go into a struct
 
-    /// The current step planner in use.
-    profile: Option<SCurveMotionProfile>,
-    next_profile: Option<SCurveMotionProfile>,
+    /// The current motion profile data in use.
+    profile: Option<ServoData>,
 
-    // the instant the motion profile is to start, so we can decide when
-    // it should be done without checking positions
-    ref_time: embassy_time::Instant,
-    next_ref_time: embassy_time::Instant,
 
     /// The current state of the driver.
     pub state: State,
@@ -742,21 +753,8 @@ pub struct SoftTimerServoDriver {
     /// Reference to the motion driver.
     transport: Option<SPIServoTransport>,
 
-    /// The waker registration for waking up tasks.
+    // The waker registration for waking up tasks.
     // waker: WakerRegistration,
-
-    /// Flags indicating the current enabled stepper channels.
-    current_axis_enable_flags: StepperChannel,
-
-    /// Flags indicating the current forward direction stepper channels.
-    current_axis_dir_fwd_flags: StepperChannel,
-
-    next_axis_enable_flags: StepperChannel,
-    next_axis_dir_fwd_flags: StepperChannel,
-
-    direction_unit_vector: TVector<Real>,
-    next_direction_unit_vector: TVector<Real>,
-
 
 }
 
@@ -787,59 +785,65 @@ impl SoftTimerServoDriver {
     /// // Assuming you have a `SoftTimerDriver` instance named `driver`
     /// driver.on_interrupt();
     /// ```
-    pub fn on_interrupt(&mut self) {
+    pub async fn on_interrupt(&mut self) {
         // check if profile is active
         // if so, send_motion
         let _t0 = embassy_time::Instant::now();
         // info!("ISR!");
         match &self.profile {
-            None =>{},
+            None =>{
+                // let new_prof = SERVO_CHANNEL.receive().await;
+                // self.profile.replace(new_prof);
+                match SERVO_CHANNEL.try_receive() {
+                    Err(_) => {
+                        self.profile=None;
+                    },
+                    Ok(new_prof) => {
+                        self.profile.replace(new_prof);
+
+                    }
+                }
+            },
             Some(_p) => {
                 // elapsed time in seconds
-                let elapsed = Real::from_f32(self.ref_time.elapsed().as_micros() as f32)/ONE_MILLION;
-                if elapsed > _p.end_time() {
-                    match &self.next_profile {
-                        None => {
-                            self.state = State::Idle;
-                            self.profile = None;
-        
+                let elapsed = Real::from_f32(_p.ref_time.elapsed().as_micros() as f32)/ONE_MILLION;
+                if elapsed > _p.profile.end_time() {
+                    match SERVO_CHANNEL.try_receive() {
+                        Err(_) => {
+                            self.profile=None;
                         },
-                        Some(_np) => {
-                            self.profile.replace(*_np); // maybe bad idea to copy?
-                            self.current_axis_dir_fwd_flags = self.next_axis_dir_fwd_flags;
-                            self.current_axis_enable_flags = self.next_axis_enable_flags;
-                            self.direction_unit_vector = self.next_direction_unit_vector;
+                        Ok(new_prof) => {
+                            self.profile.replace(new_prof);
 
-                            self.next_profile = None;
-                            self.ref_time = self.next_ref_time;
                         }
                     }
         
                 } else {
+
                     // this should never panic, as elapsed should always be positive
-                    let pos = _p.mp().eval_position(elapsed).unwrap().0;
-                    let vel = _p.mp().eval_velocity(elapsed).unwrap().0;
-                    let acc = _p.mp().eval_accel(elapsed).unwrap().0;
+                    let pos = _p.profile.mp().eval_position(elapsed).unwrap().0;
+                    let vel = _p.profile.mp().eval_velocity(elapsed).unwrap().0;
+                    let acc = _p.profile.mp().eval_accel(elapsed).unwrap().0;
                     // need to scale by unit vector components
-                    let dir =  if self.current_axis_dir_fwd_flags.contains(StepperChannel::X) {
-                        Real::one()
-                    } else {
-                        Real::from_f32(-1.0f32)
-                    };
+                    // let dir =  if self.current_axis_dir_fwd_flags.contains(StepperChannel::X) {
+                    //     Real::one()
+                    // } else {
+                    //     Real::from_f32(-1.0f32)
+                    // };
                     
-                    info!("pos: {:?}", pos*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
-                    info!("vel: {:?}", vel*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
-                    info!("acc: {:?}\n", acc*dir*self.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    // info!("pos: {:?}", pos*_p.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    // info!("vel: {:?}", vel*_p.direction_unit_vector.x.unwrap_or(Real::zero()));
+                    // info!("acc: {:?}\n", acc*_p.direction_unit_vector.x.unwrap_or(Real::zero()));
                     match &self.transport {
                         None => {
                             panic!("Tried to send to servo controller, but no transport defined!")
                         },
                         Some(_t) => {
-                            _t.send_motion(pos, vel, acc);
+                            _t.send_motion(pos, vel, acc).await;
                         }
                     }
-                    
-                }
+            }
+                
             }
         }
 
@@ -849,7 +853,8 @@ impl SoftTimerServoDriver {
 }
 
 
-pub struct ServoSoftTimer(pub CsMutex<RefCell<SoftTimerServoDriver>>);
+
+pub struct ServoSoftTimer(pub RefCell<SoftTimerServoDriver>);
 
 impl ServoSoftTimer {
     /// Creates a new instance of `ServoSoftTimer`.
@@ -875,25 +880,16 @@ impl ServoSoftTimer {
     /// let timer = ServoSoftTimer::new();
     /// ```
     pub const fn new() -> Self {
-        Self(CsMutex::new(RefCell::new(
+        Self(RefCell::new(
                 SoftTimerServoDriver {
                 profile: None,
-                next_profile: None,
-                ref_time: embassy_time::Instant::from_micros(0),
-                next_ref_time: embassy_time::Instant::from_micros(0),
                 state: State::Idle,
                 // waker: WakerRegistration::new(),
                 transport: None,
-                current_axis_enable_flags: StepperChannel::empty(),
-                current_axis_dir_fwd_flags: StepperChannel::empty(),
-                next_axis_enable_flags: StepperChannel::empty(),
-                next_axis_dir_fwd_flags: StepperChannel::empty(),
-                direction_unit_vector: TVector::<Real>::new(),
-                next_direction_unit_vector: TVector::<Real>::new(),
 
             }
         )
-    ))
+    )
     }
 
     
@@ -918,103 +914,27 @@ impl ServoSoftTimer {
     /// let motion_driver_ref = ...; // Provide a motion driver reference
     /// timer.setup(motion_driver_ref);
     /// ```
-    pub fn setup(&self, _trans: SPIServoTransport) {
-        critical_section::with(|cs| {
-            let mut r = self.0.borrow_ref_mut(cs);
+    pub fn setup(&mut self, _trans: SPIServoTransport) {
+            let r = self.0.get_mut();
             r.transport.replace(_trans);
-        })
-    }
-
-    
-    /// Pushes motion profile information onto the internal double buffer.
-    ///
-    /// This method enqueues a multi-timer segment, along with flags for stepper 
-    /// motor channel enablement and direction, into the `SoftTimer` queue. The
-    /// `push` operation ensures that the stepper motor operations are managed 
-    /// in sequence with other queued segments.
-    ///
-    /// The method returns a future that resolves once the operation is completed.
-    /// This allows asynchronous handling of the queueing process.
-    ///
-    /// # Parameters
-    ///
-    /// - `multi_timer`: The `MultiTimer` instance representing the segment to be queued.
-    /// - `stepper_enable_flags`: Flags indicating which stepper motor channels are enabled.
-    /// - `stepper_dir_fwd_flags`: Flags indicating the forward direction for the
-    ///   stepper motor channels.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// let timer = SoftTimer::new();
-    /// // Define a multi-timer segment
-    /// let multi_timer = ...;
-    /// // Enable X channel and set forward direction for X channel
-    /// let stepper_enable_flags = StepperChannel::X;
-    /// let stepper_dir_fwd_flags = StepperChannel::X;
-    /// let push_future = timer.push(multi_timer, stepper_enable_flags, stepper_dir_fwd_flags);
-    /// ```
-    ///
-    /// # Returns
-    ///
-    /// A future that resolves to `()` once the segment has been successfully queued.
-    pub fn push(
-        &self,
-        ref_instant: embassy_time::Instant,
-        direction_unit_vector: TVector<Real>,
-        new_profile: SCurveMotionProfile,
-        axis_enable_flags: StepperChannel,
-        axis_dir_fwd_flags: StepperChannel,
-    ) {
-        critical_section::with(|cs| {
-            let mut r = self.0.borrow_ref_mut(cs);
-            // this is all wrong
-            match r.next_profile {
-                None =>{
-                    match r.state {
-                        State::Idle => {
-                            r.profile.replace(new_profile);
-                            r.ref_time=ref_instant;
-                            r.current_axis_enable_flags = axis_enable_flags;
-                            r.current_axis_dir_fwd_flags = axis_dir_fwd_flags;
-                            r.direction_unit_vector = direction_unit_vector;
-                        },
-                        State::Duty => {
-                            r.next_profile.replace(new_profile);
-                            r.next_ref_time = ref_instant;
-                            r.next_axis_enable_flags = axis_enable_flags;
-                            r.next_axis_dir_fwd_flags = axis_dir_fwd_flags;
-                            r.next_direction_unit_vector = direction_unit_vector;
-                        }
-                    }
-                },
-                Some(_) =>{
-                    unreachable!("tried to queue up too many motion profiles, you better fix it!")
-                }
-            };
-
-
-        });
-    }
-
-    
-    pub fn reset(&self) {
-        critical_section::with(|cs| {
-            let mut r = self.0.borrow_ref_mut(cs);
-            r.current_axis_enable_flags = StepperChannel::UNSET;
-            r.current_axis_dir_fwd_flags = StepperChannel::UNSET;
-        });
     }
 
 }
 
-pub static SERVO_DRIVER: ServoSoftTimer = ServoSoftTimer::new();
+#[embassy_executor::task]
+pub async fn servo_timer_ticker(spidev: SpiDeviceRef) {
+    let mut t = embassy_time::Ticker::every(Duration::from_micros((1_000_000 / 5000) as u64));
+    
+    let trans = SPIServoTransport::new(spidev);
 
-#[no_mangle]
-pub extern "Rust" fn servo_tick() {
-    critical_section::with(|cs| {
-        let mut servo_driver = SERVO_DRIVER.0.borrow_ref_mut(cs);
+    let mut servo_timer = ServoSoftTimer::new();
+    servo_timer.setup(trans);
 
-        servo_driver.on_interrupt();
-    });
+    
+
+    loop {
+        let mut r = servo_timer.0.borrow_mut();
+        r.on_interrupt().await;
+        t.next().await;
+    }
 }

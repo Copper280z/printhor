@@ -17,8 +17,8 @@ use embassy_stm32::spi;
 use printhor_hwa_common::{ControllerMutex, ControllerRef, ControllerMutexType};
 use printhor_hwa_common::{TrackedStaticCell, MachineContext, InterruptControllerMutex};
 
-use embassy_stm32::time::Hertz;
-use embassy_stm32::interrupt;
+// use embassy_stm32::time::Hertz;
+// use embassy_stm32::interrupt;
 
 
 #[global_allocator]
@@ -318,25 +318,25 @@ pub async fn setup(_spawner: Spawner, p: embassy_stm32::Peripherals) -> printhor
     //         )
     //     ))
     // };
-    static SERVO_TIMER_INST: TrackedStaticCell<device::ServoTimer> = TrackedStaticCell::new();
-    let servo_timer = SERVO_TIMER_INST.init::<{crate::MAX_STATIC_MEMORY}>(
-        "ServoTimer",
-            device::ServoTimer::new(p.TIM7)
-    );
+    // static SERVO_TIMER_INST: TrackedStaticCell<device::ServoTimer> = TrackedStaticCell::new();
+    // let servo_timer = SERVO_TIMER_INST.init::<{crate::MAX_STATIC_MEMORY}>(
+    //     "ServoTimer",
+    //         device::ServoTimer::new(p.TIM7)
+    // );
 
-    // let servo_timer = device::ServoTimer::new(p.TIM7);
-    servo_timer.set_frequency(Hertz(1000));
-    // autoreload preload?
-    // servo_timer.set_counting_mode();
-    servo_timer.enable_update_interrupt(true);
-    servo_timer.start();
-    unsafe { 
-        let mut periph = cortex_m::Peripherals::take().unwrap();
-        cortex_m::peripheral::NVIC::unmask(interrupt::TIM7);
-        // let mut nvic = embassy_stm32::
-        periph.NVIC.set_priority(interrupt::TIM7, 8);
-    };
-    defmt::info!("timer started(?)");
+    // // let servo_timer = device::ServoTimer::new(p.TIM7);
+    // servo_timer.set_frequency(Hertz(1000));
+    // // autoreload preload?
+    // // servo_timer.set_counting_mode();
+    // servo_timer.enable_update_interrupt(true);
+    // servo_timer.start();
+    // unsafe { 
+    //     let mut periph = cortex_m::Peripherals::take().unwrap();
+    //     cortex_m::peripheral::NVIC::unmask(interrupt::TIM7);
+    //     // let mut nvic = embassy_stm32::
+    //     periph.NVIC.set_priority(interrupt::TIM7, 8);
+    // };
+    // defmt::info!("timer started(?)");
 
 
     #[cfg(feature = "with-sdcard")]

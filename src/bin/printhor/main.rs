@@ -13,7 +13,6 @@ pub mod machine;
 pub mod math;
 pub mod tgeo;
 
-use hwa::controllers::{SPIServoTransport, SERVO_DRIVER};
 pub use tgeo::TVector;
 
 use crate::control::task_control::ControlTaskControllers;
@@ -153,8 +152,7 @@ async fn spawn_tasks(
     _wd: hwa::WatchdogRef,
 ) -> Result<(), ()> {
     
-    let trans = SPIServoTransport::new(_io_devices.spi_device);
-    SERVO_DRIVER.setup(trans);
+
 
     #[cfg(all(feature = "with-sdcard", feature = "sdcard-uses-spi"))]
     let sdcard_adapter =
@@ -367,26 +365,26 @@ async fn spawn_tasks(
     {
         motion_planer
             .set_max_speed(tgeo::TVector::from_coords(
-                Some(100),
-                Some(100),
+                Some(1000),
+                Some(1000),
                 Some(50),
                 Some(100),
             ))
             .await;
         motion_planer
             .set_max_accel(tgeo::TVector::from_coords(
-                Some(3000),
-                Some(3000),
+                Some(30000),
+                Some(30000),
                 Some(100),
-                Some(3000),
+                Some(30000),
             ))
             .await;
         motion_planer
             .set_max_jerk(tgeo::TVector::from_coords(
-                Some(6000),
-                Some(6000),
+                Some(100000),
+                Some(100000),
                 Some(200),
-                Some(6000),
+                Some(60000),
             ))
             .await;
         motion_planer.set_default_travel_speed(100).await;
@@ -416,6 +414,12 @@ async fn spawn_tasks(
             ))
             .map_err(|_| ())?;
     }
+
+    spawner
+    .spawn( hwa::controllers::motion::servo_timer_ticker(
+        _io_devices.spi_device
+    ))
+    .map_err(|_| ())?;
 
     #[cfg(any(test, feature = "integration-test"))]
     spawner
